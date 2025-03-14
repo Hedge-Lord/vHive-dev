@@ -40,11 +40,28 @@ sudo systemctl kill --kill-who=all apt-daily.service
 sudo rm -f /var/lib/systemd/timers/stamp-apt-daily.timer
 sudo rm -f /var/lib/systemd/timers/stamp-apt-daily-upgrade.timer
 
-# wait until `apt-get updated` has been killed
-while ! (systemctl list-units --all apt-daily.service | egrep -q '(dead|failed)')
-do
-  sleep 1
+# Check if apt-daily.service is loaded
+if ! systemctl list-units --all apt-daily.service &>/dev/null; then
+    echo "apt-daily.service is not loaded; skipping wait."
+else
+    # wait until apt-daily.service is dead or failed, with a timeout
+    timeout=30  # seconds
+    elapsed=0
+    while ! (systemctl list-units --all apt-daily.service | egrep -q '(dead|failed)'); do
+        sleep 1
+        elapsed=$((elapsed+1))
+        if [ $elapsed -ge $timeout ]; then
+            echo "Timeout waiting for apt-daily.service to stop, continuing..."
+            break
+        fi
+    done
+fi
+
+# wait until the apt lock is released
+while fuser /var/lib/dpkg/lock >/dev/null 2>&1 ; do
+    sleep 1
 done
+
 
 # Source: https://askubuntu.com/a/375031/388226
 while fuser /var/lib/dpkg/lock >/dev/null 2>&1 ; do
